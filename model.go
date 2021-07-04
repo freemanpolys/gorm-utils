@@ -13,14 +13,21 @@ import (
 //      gorm.Base
 //    }
 // https://gorm.io/docs/conventions.html
-type Base struct {
+type Model struct {
 	gorm.Model
 	ID uuid.UUID `gorm:"type:uuid;primary_key;"`
-	UpdatedAt time.Time `gorm:"default:now()"`
 }
 
 // BeforeCreate will set a UUID rather than numeric ID.
-func (base *Base) BeforeCreate(tx *gorm.DB) (err error) {
-	base.ID = uuid.New()
+func (model *Model) BeforeCreate(tx *gorm.DB) (err error) {
+	model.ID = uuid.New()
+	model.CreatedAt = time.Now()
+	model.UpdatedAt = time.Now()
+	return
+}
+
+// BeforeUpdate will update UpdatedAt.
+func (model *Model) BeforeUpdate(tx *gorm.DB) (err error) {
+	model.UpdatedAt = time.Now()
 	return
 }
