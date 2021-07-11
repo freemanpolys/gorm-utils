@@ -3,7 +3,7 @@
 go get github.com/andiwork/gorm-utils
 ```
 ## Overview
-* model.go : update  base gorm.Model with uuid for ID and set update time to now() and set 
+* model.go : update  base gorm.Model with uuid for ID and set update time to now() 
 
 ## Getting Started
 ### gorm-utils.Model
