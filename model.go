@@ -15,7 +15,10 @@ import (
 // https://gorm.io/docs/conventions.html
 type Model struct {
 	gorm.Model
-	ID uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	OwnedBy   string
+	CreatedBy string
+	UpdatedBy string
 }
 
 // BeforeCreate will set a UUID rather than numeric ID.
