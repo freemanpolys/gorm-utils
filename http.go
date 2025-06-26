@@ -6,6 +6,39 @@ import (
 	"strings"
 )
 
+// parseFilterConditions parses the filter string into conditions, handling 'in' operator values with commas.
+func parseFilterConditions(filterStr string) []string {
+	if filterStr == "" {
+		return nil
+	}
+	tokens := strings.Split(filterStr, ",")
+	var conditions []string
+	i := 0
+	for i < len(tokens) {
+		// Try to find a token with at least two colons (field:operator:value)
+		parts := strings.SplitN(tokens[i], ":", 3)
+		if len(parts) == 3 {
+			field := parts[0]
+			operator := parts[1]
+			value := parts[2]
+			if strings.EqualFold(operator, "in") {
+				// Collect all tokens until the next token with at least two colons or end
+				j := i + 1
+				for j < len(tokens) && !strings.Contains(tokens[j], ":") {
+					value += "," + tokens[j]
+					j++
+				}
+				conditions = append(conditions, field+":"+operator+":"+value)
+				i = j
+				continue
+			}
+			conditions = append(conditions, tokens[i])
+		}
+		i++
+	}
+	return conditions
+}
+
 // FromRequest extracts pagination and filters from an HTTP request.
 func FromRequest(r *http.Request) (*Pagination, []Filter) {
 	q := r.URL.Query()
@@ -27,31 +60,28 @@ func FromRequest(r *http.Request) (*Pagination, []Filter) {
 		Sort:  sort,
 	}
 
-	// Parse filters
+	// Parse filters from new format: field::operator::value~~field2::operator2::value2
 	var filters []Filter
-	for key, values := range q {
-		if strings.HasPrefix(key, "filter[") && strings.HasSuffix(key, "]") {
-			// Extract field from "filter[field]"
-			field := key[7 : len(key)-1]
-			if len(values) > 0 {
-				// The value is expected to be in the format "operator,value"
-				parts := strings.SplitN(values[0], ",", 2)
-				if len(parts) == 2 {
-					operator := parts[0]
-					value := parts[1]
-					var filterValue any
-					if strings.EqualFold(operator, "in") {
-						// Split value by comma for IN operator
-						filterValue = strings.Split(value, ",")
-					} else {
-						filterValue = value
-					}
-					filters = append(filters, Filter{
-						Field:    field,
-						Operator: operator,
-						Value:    filterValue,
-					})
+	filterStr := q.Get("filter")
+	if filterStr != "" {
+		conditions := strings.Split(filterStr, "~~")
+		for _, cond := range conditions {
+			parts := strings.SplitN(cond, "::", 3)
+			if len(parts) == 3 {
+				field := parts[0]
+				operator := parts[1]
+				value := parts[2]
+				var filterValue any
+				if strings.EqualFold(operator, "in") || strings.EqualFold(operator, "between") {
+					filterValue = strings.Split(value, "||")
+				} else {
+					filterValue = value
 				}
+				filters = append(filters, Filter{
+					Field:    field,
+					Operator: operator,
+					Value:    filterValue,
+				})
 			}
 		}
 	}

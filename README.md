@@ -99,7 +99,7 @@ You can extract pagination and filters directly from an HTTP request using `From
 ### Example HTTP Request
 
 ```
-GET /products?page=1&limit=1&sort=price desc&filter[code]=like,D4&filter[price]=>,150
+GET /products?page=1&limit=10&sort=qty asc&filter=name::like::foo~~qty::gte::10~~price::between::100||200
 ```
 
 ### Go Usage
@@ -119,12 +119,12 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-### Special Case: IN Operator
+### Special Cases: IN and BETWEEN Operators
 
-To filter with the SQL `IN` operator, use a comma-separated list:
+To filter with the SQL `IN` operator, use a double-pipe `||` separated list in the value:
 
 ```
-GET /products?filter[code]=in,D42,L12
+GET /products?filter=code::in::D42||L12
 ```
 
 This will be parsed as:
@@ -132,6 +132,20 @@ This will be parsed as:
 ```go
 []utils.Filter{
 	{Field: "code", Operator: "in", Value: []string{"D42", "L12"}},
+}
+```
+
+To filter with the SQL `BETWEEN` operator, use two values separated by `||`:
+
+```
+GET /products?filter=price::between::100||200
+```
+
+This will be parsed as:
+
+```go
+[]utils.Filter{
+	{Field: "price", Operator: "between", Value: []string{"100", "200"}},
 }
 ```
 
