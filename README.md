@@ -1,84 +1,148 @@
-# Gorm Utils
-```bash
-go get github.com/andiwork/gorm-utils
-```
-## Overview
-* model.go : update  base gorm.Model with uuid for ID and set update time to now() 
+# gorm-utils
 
-## Getting Started
-### gorm-utils.Model
+A set of utilities for GORM to simplify model definition, pagination, and filtering in Go web applications.
+
+## Installation
+
+```bash
+go get github.com/freemanpolys/gorm-utils
 ```
-package hello
+
+---
+
+## Features
+
+- **Enhanced GORM Model**: Use UUIDs for IDs and automatic update timestamps.
+- **Pagination**: Easily paginate your GORM queries.
+- **Filtering**: Build dynamic filters from HTTP requests or query strings.
+- **Safe Querying**: Built-in sanitization for fields and operators to prevent SQL injection.
+
+---
+
+## Model Example
+
+```go
+package main
 
 import (
-	utils "github.com/andiwork/gorm-utils"
+	utils "github.com/freemanpolys/gorm-utils"
 )
 
-// User is just a sample type
 type Person struct {
 	utils.Model
-	Name string `json:"name" description:"name of the user" default:"john"`
-	Age  int    `json:"age" description:"age of the user" default:"21"`
+	Name string `json:"name"`
+	Age  int    `json:"age"`
 }
 ```
 
-### Pagination and Filtering
+---
 
-This utility also provides a simple way to paginate and filter your GORM queries.
+## Pagination and Filtering with GORM
+
+> **Pagination approach inspired by [this article by Rafael G. Firmino](https://dev.to/rafaelgfirmino/pagination-using-gorm-scopes-3k5f).**
 
 ```go
 package main
 
 import (
 	"fmt"
-
-	utils "github.com/andiwork/gorm-utils"
+	utils "github.com/freemanpolys/gorm-utils"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 func main() {
-	db, err := gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
-	if err != nil {
-		panic("failed to connect database")
-	}
-
-	// Migrate the schema
+	db, _ := gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
 	db.AutoMigrate(&Person{})
 
-	// Create
+	// Create sample data
 	db.Create(&Person{Name: "John", Age: 25})
 	db.Create(&Person{Name: "Jane", Age: 30})
 	db.Create(&Person{Name: "Doe", Age: 25})
 
 	var people []Person
 
-	// Paginate
+	// Pagination
 	pagination := utils.Pagination{Limit: 2, Page: 1, Sort: "age desc"}
 	db.Scopes(utils.Paginate(&pagination)).Find(&people)
-	fmt.Println(people)
+	fmt.Println("Paginated:", people)
 
-	// Filter
+	// Filtering
 	filters := []utils.Filter{
 		{Field: "age", Operator: "=", Value: 25},
 	}
 	db.Scopes(utils.FilterScope(filters)).Find(&people)
-	fmt.Println(people)
-	 // Combine Pagination and Filter
-	db.Scopes(utils.Paginate(&pagination), utils.FilterScope(filters)).Find(&people)
-	fmt.Println(people)
+	fmt.Println("Filtered:", people)
 
-	// String to StringToFilters
-	 filtersStr := "age=25&name=John"
-	  filters, err := utils.StringToFilters(filtersStr)
-	   if err != nil {
-	fmt.Println("Error converting string to filters:", err)
-	return
+	// Combine Pagination and Filtering
+	db.Scopes(utils.Paginate(&pagination), utils.FilterScope(filters)).Find(&people)
+	fmt.Println("Paginated & Filtered:", people)
+
+	// String to Filters
+	filtersStr := "age=25&name=John"
+	filters, err := utils.StringToFilters(filtersStr)
+	if err != nil {
+		fmt.Println("Error converting string to filters:", err)
+		return
 	}
 	db.Scopes(utils.FilterScope(filters)).Find(&people)
-	fmt.Println(people)
+	fmt.Println("StringToFilters:", people)
 }
 ```
+
+---
+
+## HTTP Query Example
+
+You can extract pagination and filters directly from an HTTP request using `FromRequest`:
+
+### Example HTTP Request
+
+```
+GET /products?page=1&limit=1&sort=price desc&filter[code]=like,D4&filter[price]=>,150
+```
+
+### Go Usage
+
+```go
+import (
+	"net/http"
+	utils "github.com/freemanpolys/gorm-utils"
+)
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	pagination, filters := utils.FromRequest(r)
+	// Use with GORM
+	var products []Product
+	db.Scopes(utils.Paginate(pagination), utils.FilterScope(filters)).Find(&products)
+	// ...return products as JSON, etc.
+}
+```
+
+### Special Case: IN Operator
+
+To filter with the SQL `IN` operator, use a comma-separated list:
+
+```
+GET /products?filter[code]=in,D42,L12
+```
+
+This will be parsed as:
+
+```go
+[]utils.Filter{
+	{Field: "code", Operator: "in", Value: []string{"D42", "L12"}},
+}
+```
+
+---
+
+## Security
+
+- All field names and operators are sanitized.
+- Only a safe subset of SQL operators is allowed (`=`, `<>`, `>`, `>=`, `<`, `<=`, `LIKE`, `IN`).
+
+---
 
 ## License
 

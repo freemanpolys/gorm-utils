@@ -1,4 +1,4 @@
-module github.com/andiwork/gorm-utils
+module github.com/freemanpolys/gorm-utils
 
 go 1.24
 
