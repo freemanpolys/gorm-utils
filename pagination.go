@@ -2,7 +2,9 @@ package gorm
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -41,22 +43,62 @@ func FilterScope(filters []Filter) func(db *gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		for _, filter := range filters {
 			if filter.Field != "" && filter.Operator != "" && filter.Value != nil {
-				// Basic protection against SQL injection
-				// You might want to use a more robust solution for production
-				// For example, a whitelist of allowed fields and operators
-				field := Sanitize(filter.Field)
+				field := filter.Field
 				operator := SanitizeOperator(filter.Operator)
+				rawValue, ok := filter.Value.(string)
+				if !ok {
+					continue // skip non-string values
+				}
 
-				if operator == "IN" {
-					db = db.Where(fmt.Sprintf("%s %s (?)", field, operator), filter.Value)
+				// Detect cast type from string value
+				castType := detectCastType(rawValue)
+
+				if strings.Contains(field, ".") {
+					parts := strings.SplitN(field, ".", 2)
+					jsonbCol := Sanitize(parts[0])
+					jsonAttr := Sanitize(parts[1])
+					jsonbExpr := fmt.Sprintf("%s->>'%s'", jsonbCol, jsonAttr)
+
+					if castType != "" {
+						jsonbExpr = fmt.Sprintf("CAST(%s AS %s)", jsonbExpr, castType)
+					}
+
+					if operator == "IN" {
+						db = db.Where(fmt.Sprintf("%s %s (?)", jsonbExpr, operator), strings.Split(rawValue, "||"))
+					} else {
+						db = db.Where(fmt.Sprintf("%s %s ?", jsonbExpr, operator), rawValue)
+					}
 				} else {
-					db = db.Where(fmt.Sprintf("%s %s ?", field, operator), filter.Value)
+					field = Sanitize(field)
+					if operator == "IN" {
+						db = db.Where(fmt.Sprintf("%s %s (?)", field, operator), strings.Split(rawValue, "||"))
+					} else {
+						db = db.Where(fmt.Sprintf("%s %s ?", field, operator), rawValue)
+					}
 				}
 			}
 		}
 		return db
 	}
 }
+
+// detectCastType attempts to guess PostgreSQL type from string
+func detectCastType(value string) string {
+	if _, err := strconv.ParseFloat(value, 64); err == nil {
+		return "numeric"
+	}
+	if _, err := strconv.ParseBool(value); err == nil {
+		return "boolean"
+	}
+	if _, err := time.Parse("2006-01-02", value); err == nil {
+		return "date"
+	}
+	if _, err := time.Parse(time.RFC3339, value); err == nil {
+		return "timestamp"
+	}
+	return "" // treat as plain string
+}
+
 
 // Sanitize removes any character that is not a letter, a number or an underscore.
 func Sanitize(s string) string {
@@ -73,18 +115,18 @@ func SanitizeOperator(s string) string {
 	// Allow only a subset of operators to prevent SQL injection.
 	// You can extend this list if you need more operators.
 	allowedOperators := map[string]bool{
-		"=":    true,
-		"<>":   true,
-		">":    true,
-		">=":   true,
-		"<":    true,
-		"<=":   true,
-		"LIKE": true,
-		"IN":   true,
+		"=":       true,
+		"<>":      true,
+		">":       true,
+		">=":      true,
+		"<":       true,
+		"<=":      true,
+		"LIKE":    true,
+		"IN":      true,
+		"BETWEEN": true,
 	}
 	if allowedOperators[strings.ToUpper(s)] {
 		return strings.ToUpper(s)
 	}
 	return "=" // default to "=" if the operator is not allowed
 }
-
